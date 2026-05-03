@@ -11,11 +11,20 @@ import (
 
 	"github.com/rearurides/eagle-bank/config"
 	"github.com/rearurides/eagle-bank/internal/handler"
+	"github.com/rearurides/eagle-bank/pkg/db"
 )
 
 func main() {
 	cfg := config.LoadConfig()
 
+	// Initialize database connection
+	database, err := db.NewSQLiteDB(cfg.DBPath)
+	if err != nil {
+		log.Fatalf("Failed to connect to database: %v", err)
+	}
+	defer database.Close()
+
+	// Initialize HTTP router and server
 	router := handler.NewRouter()
 
 	srv := &http.Server{
@@ -26,6 +35,7 @@ func main() {
 		IdleTimeout:  10 * time.Second,
 	}
 
+	// Start server in a separate goroutine
 	go func() {
 		log.Printf("server starting on port %s", cfg.Port)
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
@@ -33,12 +43,14 @@ func main() {
 		}
 	}()
 
+	// Wait for interrupt signal to gracefully shutdown the server
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	<-quit
 
 	log.Println("shuting down sever...")
 
+	// Create a context with timeout for the shutdown process
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 

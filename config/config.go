@@ -3,12 +3,14 @@ package config
 import "os"
 
 type Config struct {
-	Port string
+	Port   string
+	DBPath string
 }
 
 func LoadConfig() *Config {
 	return &Config{
-		Port: getEnv("PORT", "3000"),
+		Port:   getEnv("PORT", "3000"),
+		DBPath: getEnv("DB_PATH", "eagle_bank.db"),
 	}
 }
 
