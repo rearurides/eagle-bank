@@ -24,6 +24,11 @@ func main() {
 	}
 	defer database.Close()
 
+	// Run database migrations
+	if err := db.RunMigrations(database, "./migrations"); err != nil {
+		log.Fatalf("Failed to run migrations: %v", err)
+	}
+
 	// Initialize HTTP router and server
 	router := handler.NewRouter()
 

@@ -6,3 +6,7 @@ Rest API for banking system
 ``` bash
 go run ./cmd/api
 ```
+
+## Database
+
+The system uses an SQLite database with schema migrations executed on server startup.
