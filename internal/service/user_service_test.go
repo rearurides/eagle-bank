@@ -1,0 +1,132 @@
+package service
+
+import (
+	"errors"
+	"testing"
+
+	"github.com/rearurides/eagle-bank/internal/domain"
+	"github.com/rearurides/eagle-bank/internal/domain/validation"
+)
+
+type mockUserRepository struct {
+	createFunc func(user *domain.User) error
+}
+
+func (m *mockUserRepository) Create(user *domain.User) error {
+	if m.createFunc != nil {
+		return m.createFunc(user)
+	}
+	return nil
+}
+
+func newMockUserRepository() *mockUserRepository {
+	return &mockUserRepository{}
+}
+
+func TestUserService_CreateUser(t *testing.T) {
+	testCases := []struct {
+		name       string
+		createUser func(input CreateUserInput) (*domain.User, error)
+		wantErr    bool
+	}{
+		{
+			name: "successful user creation",
+			createUser: func(input CreateUserInput) (*domain.User, error) {
+				return &domain.User{
+					ID:          "usr-abc123",
+					Name:        input.Name,
+					Email:       input.Email,
+					PhoneNumber: input.PhoneNumber,
+					Addr:        input.Address,
+				}, nil
+			},
+			wantErr: false,
+		},
+		{
+			name: "validation error",
+			createUser: func(input CreateUserInput) (*domain.User, error) {
+				return nil, &validation.ValidationError{
+					Message: "invalid user",
+					Items:   []validation.ValidationItem{{Field: "email", Message: "email is required"}},
+				}
+			},
+			wantErr: true,
+		},
+		{
+			name: "repository error",
+			createUser: func(input CreateUserInput) (*domain.User, error) {
+				return nil, errors.New("database error")
+			},
+			wantErr: true,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			mockRepo := newMockUserRepository()
+			mockRepo.createFunc = func(user *domain.User) error {
+				if tc.createUser != nil {
+					_, err := tc.createUser(CreateUserInput{
+						Name:        user.Name,
+						Email:       user.Email,
+						PhoneNumber: user.PhoneNumber,
+						Address:     user.Addr,
+					})
+					return err
+				}
+				return nil
+			}
+			svc := NewUserService(mockRepo)
+
+			input := CreateUserInput{
+				Name:        "John Doe",
+				Email:       "john.doe@example.com",
+				PhoneNumber: "+441234567890",
+				Address: domain.Addr{
+					Line1:    "123 Main St",
+					Town:     "Anytown",
+					County:   "Anycounty",
+					PostCode: "12345",
+				},
+			}
+			_, err := svc.CreateUser(input)
+			if tc.wantErr {
+				if err == nil {
+					t.Errorf("expected error, got nil")
+				}
+			} else {
+				if err != nil {
+					t.Errorf("unexpected error: %v", err)
+				}
+			}
+		})
+	}
+}
+
+func Test_CreateUser_Validation_Error(t *testing.T) {
+	svc := NewUserService(newMockUserRepository())
+
+	input := CreateUserInput{
+		Name:        "John Doe",
+		Email:       "invalid-email",
+		PhoneNumber: "+441234567890",
+		Address: domain.Addr{
+			Line1:    "123 Main St",
+			Town:     "Anytown",
+			County:   "Anycounty",
+			PostCode: "12345",
+		},
+	}
+	_, err := svc.CreateUser(input)
+	if err == nil {
+		t.Errorf("expected validation error, got nil")
+	}
+	if valErr, ok := errors.AsType[*validation.ValidationError](err); ok {
+		if valErr.Message != "invalid user" {
+			t.Errorf("expected validation error message 'invalid user', got '%s'", valErr.Message)
+		}
+		if len(valErr.Items) != 1 {
+			t.Errorf("expected 1 validation item, got %d", len(valErr.Items))
+		}
+	}
+}

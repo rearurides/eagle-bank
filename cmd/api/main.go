@@ -11,6 +11,8 @@ import (
 
 	"github.com/rearurides/eagle-bank/config"
 	"github.com/rearurides/eagle-bank/internal/handler"
+	"github.com/rearurides/eagle-bank/internal/repository"
+	"github.com/rearurides/eagle-bank/internal/service"
 	"github.com/rearurides/eagle-bank/pkg/db"
 )
 
@@ -29,8 +31,14 @@ func main() {
 		log.Fatalf("Failed to run migrations: %v", err)
 	}
 
+	// Repositories
+	userRepo := repository.NewUserRepo(database)
+
+	// Services
+	userService := service.NewUserService(userRepo)
+
 	// Initialize HTTP router and server
-	router := handler.NewRouter()
+	router := handler.NewRouter(userService)
 
 	srv := &http.Server{
 		Addr:         ":" + cfg.Port,

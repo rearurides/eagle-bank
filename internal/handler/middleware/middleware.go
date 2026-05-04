@@ -25,6 +25,8 @@ func Logging(next http.Handler) http.Handler {
 	})
 }
 
+// TODO: Add CORS middleware
+
 // RecoverPanic recovers from panics in handlers and returns a 500 Internal Server Error.
 func RecoverPanic(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
