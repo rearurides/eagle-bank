@@ -8,6 +8,8 @@ servers:
    - url: http://localhost:3000
      description: Local development
 tags:
+  - name: auth
+    description: Authentication
   - name: account
     description: Manage a bank account
   - name: transaction
@@ -15,6 +17,44 @@ tags:
   - name: user
     description: Manage a user
 paths:
+  /v1/auth/login:
+    post:
+      tags:
+        - auth
+      description: Login and retrieve a JWT token
+      operationId: loginUser
+      requestBody:
+        description: User login credentials
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+        required: true
+      responses:
+        '200':
+          description: Login successful, returns JWT token and user details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoginResponse'
+        '400':
+          description: Invalid login credentials supplied
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        '401':
+          description: Access token is missing or invalid
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        '500':
+          description: An unexpected error occurred
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
   /v1/accounts:
     post:
       tags:
@@ -622,6 +662,29 @@ paths:
                 $ref: "#/components/schemas/ErrorResponse"
 components:
   schemas:
+    LoginRequest:
+      type: object
+      required:
+        - email
+      properties:
+        email:
+          type: string
+          format: email
+          examples:
+            - "test@example.com"
+    LoginResponse:
+      type: object
+      required:
+        - token
+        - user
+      properties:
+        token:
+          type: string
+          description: JWT bearer token
+          examples:
+            - "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+        user:
+          $ref: '#/components/schemas/UserResponse'
     CreateBankAccountRequest:
       type: object
       required:

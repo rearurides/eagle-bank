@@ -14,6 +14,7 @@ import (
 	"github.com/rearurides/eagle-bank/internal/repository"
 	"github.com/rearurides/eagle-bank/internal/service"
 	"github.com/rearurides/eagle-bank/pkg/db"
+	"github.com/rearurides/eagle-bank/pkg/token"
 )
 
 func main() {
@@ -31,6 +32,9 @@ func main() {
 		log.Fatalf("Failed to run migrations: %v", err)
 	}
 
+	// Initialize token manager
+	tm := token.NewManager(cfg.JWTSecret, cfg.JWTExpiration)
+
 	// Repositories
 	userRepo := repository.NewUserRepo(database)
 
@@ -38,7 +42,7 @@ func main() {
 	userService := service.NewUserService(userRepo)
 
 	// Initialize HTTP router and server
-	router := handler.NewRouter(userService)
+	router := handler.NewRouter(userService, tm)
 
 	srv := &http.Server{
 		Addr:         ":" + cfg.Port,

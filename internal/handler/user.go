@@ -33,4 +33,6 @@ type UserResponse struct {
 
 type userService interface {
 	CreateUser(input service.CreateUserInput) (*domain.User, error)
+	Login(input service.LoginInput) (*domain.User, error)
+	GetUserByID(id string) (*domain.User, error)
 }

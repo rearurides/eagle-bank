@@ -9,7 +9,9 @@ import (
 )
 
 type mockUserRepository struct {
-	createFunc func(user *domain.User) error
+	createFunc     func(user *domain.User) error
+	getByEmailFunc func(email string) (*domain.User, error)
+	getByIDFunc    func(id string) (*domain.User, error)
 }
 
 func (m *mockUserRepository) Create(user *domain.User) error {
@@ -17,6 +19,20 @@ func (m *mockUserRepository) Create(user *domain.User) error {
 		return m.createFunc(user)
 	}
 	return nil
+}
+
+func (m *mockUserRepository) GetByEmail(email string) (*domain.User, error) {
+	if m.getByEmailFunc != nil {
+		return m.getByEmailFunc(email)
+	}
+	return nil, domain.ErrUserNotFound
+}
+
+func (m *mockUserRepository) GetByID(id string) (*domain.User, error) {
+	if m.getByIDFunc != nil {
+		return m.getByIDFunc(id)
+	}
+	return nil, domain.ErrUserNotFound
 }
 
 func newMockUserRepository() *mockUserRepository {

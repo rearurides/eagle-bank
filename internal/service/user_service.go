@@ -1,6 +1,8 @@
 package service
 
 import (
+	"errors"
+
 	"github.com/rearurides/eagle-bank/internal/domain"
 )
 
@@ -11,6 +13,21 @@ type UserService struct {
 // NewUserService creates a new instance of UserService with the given user repository.
 func NewUserService(repo domain.IUserRepository) *UserService {
 	return &UserService{repo: repo}
+}
+
+type LoginInput struct {
+	Email string
+}
+
+func (s *UserService) Login(input LoginInput) (*domain.User, error) {
+	user, err := s.repo.GetByEmail(input.Email)
+	if err != nil {
+		if errors.Is(err, domain.ErrUserNotFound) {
+			return nil, domain.ErrInvalidCredentials
+		}
+		return nil, err
+	}
+	return user, nil
 }
 
 type CreateUserInput struct {
@@ -37,5 +54,16 @@ func (s *UserService) CreateUser(req CreateUserInput) (*domain.User, error) {
 		return nil, err
 	}
 
+	return user, nil
+}
+
+func (s *UserService) GetUserByID(id string) (*domain.User, error) {
+	user, err := s.repo.GetByID(id)
+	if err != nil {
+		if errors.Is(err, domain.ErrUserNotFound) {
+			return nil, domain.ErrUserNotFound
+		}
+		return nil, err
+	}
 	return user, nil
 }

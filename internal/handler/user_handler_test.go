@@ -16,11 +16,21 @@ import (
 
 // mock implementation of the UserService interface
 type mockUserService struct {
-	createUser func(input service.CreateUserInput) (*domain.User, error)
+	createUser  func(input service.CreateUserInput) (*domain.User, error)
+	login       func(input service.LoginInput) (*domain.User, error)
+	getUserByID func(id string) (*domain.User, error)
 }
 
 func (m *mockUserService) CreateUser(input service.CreateUserInput) (*domain.User, error) {
 	return m.createUser(input)
+}
+
+func (m *mockUserService) Login(input service.LoginInput) (*domain.User, error) {
+	return m.login(input)
+}
+
+func (m *mockUserService) GetUserByID(id string) (*domain.User, error) {
+	return m.getUserByID(id)
 }
 
 func newTestUserHandler(svc userService) *userHandler {
