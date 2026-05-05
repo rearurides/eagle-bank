@@ -1,6 +1,7 @@
 package validation
 
 import (
+	"fmt"
 	"testing"
 )
 
@@ -153,5 +154,43 @@ func TestValidator_ToError(t *testing.T) {
 	}
 	if err.Items[0].Type != INVALID_FORMAT {
 		t.Errorf("expected type %s, got %s", INVALID_FORMAT, err.Items[0].Type)
+	}
+}
+
+func TestValidator_ValidEnum(t *testing.T) {
+	tests := []struct {
+		name      string
+		field     string
+		value     string
+		allowed   []string
+		message   string
+		hasErrors bool
+	}{
+		{"valid enum", "accountType", "personal", []string{"personal", "savings"}, "invalid account type", false},
+		{"invalid enum", "accountType", "business", []string{"personal", "savings"}, "invalid account type", true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			v := NewValidator().ValidEnum(tt.field, tt.value, tt.allowed, tt.message)
+			if v.HasErrors() != tt.hasErrors {
+				t.Errorf("expected HasErrors to be %v, got %v", tt.hasErrors, v.HasErrors())
+			}
+			if tt.hasErrors {
+				if len(v.items) != 1 {
+					t.Errorf("expected 1 validation item, got %d", len(v.items))
+				}
+				if v.items[0].Field != tt.field {
+					t.Errorf("expected field %s, got %s", tt.field, v.items[0].Field)
+				}
+				expectedMessage := fmt.Sprintf("%s must be one of: %v", tt.message, tt.allowed)
+				if v.items[0].Message != expectedMessage {
+					t.Errorf("expected message %q, got %q", expectedMessage, v.items[0].Message)
+				}
+				if v.items[0].Type != INVALID_FORMAT {
+					t.Errorf("expected type %s, got %s", INVALID_FORMAT, v.items[0].Type)
+				}
+			}
+		})
 	}
 }

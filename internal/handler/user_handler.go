@@ -12,8 +12,6 @@ import (
 	"github.com/rearurides/eagle-bank/pkg/token"
 )
 
-const TimeLayout = "2006-01-02T15:04:05.000Z"
-
 type userHandler struct {
 	service      userService
 	tokenManager *token.Manager

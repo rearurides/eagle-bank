@@ -1,6 +1,7 @@
 package validation
 
 import (
+	"fmt"
 	"net/mail"
 	"regexp"
 	"strings"
@@ -60,6 +61,22 @@ func (v *Validator) ValidPhoneNumber(field, value, message string) *Validator {
 			Type:    INVALID_FORMAT,
 		})
 	}
+	return v
+}
+
+// ValidEnum checks if the provided value is one of the allowed values.
+// If it is not, it adds a validation error for the specified field.
+func (v *Validator) ValidEnum(field, value string, allowed []string, message string) *Validator {
+	for _, a := range allowed {
+		if value == a {
+			return v
+		}
+	}
+	v.items = append(v.items, ValidationItem{
+		Field:   field,
+		Message: fmt.Sprintf("%s must be one of: %v", message, allowed),
+		Type:    INVALID_FORMAT,
+	})
 	return v
 }
 

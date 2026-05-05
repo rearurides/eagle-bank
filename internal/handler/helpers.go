@@ -7,6 +7,8 @@ import (
 	"github.com/rearurides/eagle-bank/internal/domain/validation"
 )
 
+const TimeLayout = "2006-01-02T15:04:05.000Z"
+
 // BadRequestMessage represents the structure of error messages returned to the client for bad requests.
 type BadRequestMessage struct {
 	Message string                      `json:"message"`

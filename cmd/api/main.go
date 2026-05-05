@@ -37,12 +37,14 @@ func main() {
 
 	// Repositories
 	userRepo := repository.NewUserRepo(database)
+	accountsRepo := repository.NewAccountsRepo(database)
 
 	// Services
 	userService := service.NewUserService(userRepo)
+	accountsService := service.NewAccountsService(accountsRepo)
 
 	// Initialize HTTP router and server
-	router := handler.NewRouter(userService, tm)
+	router := handler.NewRouter(userService, accountsService, tm)
 
 	srv := &http.Server{
 		Addr:         ":" + cfg.Port,

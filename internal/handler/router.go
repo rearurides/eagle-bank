@@ -10,20 +10,26 @@ import (
 
 func NewRouter(
 	userService *service.UserService,
+	accountService *service.AccountsService,
 	tm *token.Manager,
 ) http.Handler {
 	mux := http.NewServeMux()
 
 	userHandler := newUserHandler(userService, tm)
+	accountHandler := newAccountsHandler(accountService, tm)
 
 	mux.HandleFunc("POST /v1/users", userHandler.handleCreateUser)
 	mux.HandleFunc("POST /v1/auth/login", userHandler.handleLogin)
 
 	protected := http.NewServeMux()
 	// add protected routes
+	// User routes
 	protected.HandleFunc("GET /v1/users/{userId}", userHandler.handleGetUserByID)
+	// Account routes
+	protected.HandleFunc("POST /v1/accounts", accountHandler.handleCreateAccount)
 
 	mux.Handle("/v1/users/{userId}", middleware.Auth(tm)(protected))
+	mux.Handle("/v1/accounts", middleware.Auth(tm)(protected))
 
 	return middleware.Chain(mux,
 		middleware.Logging,
