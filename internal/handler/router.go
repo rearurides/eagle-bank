@@ -27,9 +27,11 @@ func NewRouter(
 	protected.HandleFunc("GET /v1/users/{userId}", userHandler.handleGetUserByID)
 	// Account routes
 	protected.HandleFunc("POST /v1/accounts", accountHandler.handleCreateAccount)
+	protected.HandleFunc("GET /v1/accounts/{accountNumber}", accountHandler.handleGetAccountByNumber)
 
 	mux.Handle("/v1/users/{userId}", middleware.Auth(tm)(protected))
 	mux.Handle("/v1/accounts", middleware.Auth(tm)(protected))
+	mux.Handle("/v1/accounts/{accountNumber}", middleware.Auth(tm)(protected))
 
 	return middleware.Chain(mux,
 		middleware.Logging,

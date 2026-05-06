@@ -25,6 +25,7 @@ type AccountResponse struct {
 
 type accountsService interface {
 	CreateAccount(input service.CreateAccountInput) (*domain.Account, error)
+	GetAccountByNumber(userId, accountNumber string) (*domain.Account, error)
 }
 
 type Money float32

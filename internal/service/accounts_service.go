@@ -39,3 +39,7 @@ func (s *AccountsService) CreateAccount(input CreateAccountInput) (*domain.Accou
 
 	return account, nil
 }
+
+func (s *AccountsService) GetAccountByNumber(userId, accountNumber string) (*domain.Account, error) {
+	return s.repo.GetByAccountNumber(userId, accountNumber)
+}

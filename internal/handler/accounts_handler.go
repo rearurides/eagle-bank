@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 
+	"github.com/rearurides/eagle-bank/internal/domain"
 	"github.com/rearurides/eagle-bank/internal/domain/validation"
 	"github.com/rearurides/eagle-bank/internal/handler/middleware"
 	"github.com/rearurides/eagle-bank/internal/service"
@@ -30,7 +31,7 @@ func (h *accountsHandler) handleCreateAccount(w http.ResponseWriter, r *http.Req
 	}
 
 	userId, ok := middleware.GetUserID(r)
-	if !ok {
+	if !ok || userId == "" {
 		writeError(w, http.StatusUnauthorized, BadRequestMessage{
 			Message: "unauthorized",
 		})
@@ -71,4 +72,50 @@ func (h *accountsHandler) handleCreateAccount(w http.ResponseWriter, r *http.Req
 	}
 
 	writeJSON(w, http.StatusCreated, response)
+}
+
+func (h *accountsHandler) handleGetAccountByNumber(w http.ResponseWriter, r *http.Request) {
+	accountNumber := r.PathValue("accountNumber")
+	if accountNumber == "" {
+		writeError(w, http.StatusBadRequest, BadRequestMessage{
+			Message: "account number is required",
+		})
+		return
+	}
+
+	userId, ok := middleware.GetUserID(r)
+	if !ok || userId == "" {
+		writeError(w, http.StatusUnauthorized, BadRequestMessage{
+			Message: "unauthorized",
+		})
+		return
+	}
+
+	account, err := h.service.GetAccountByNumber(userId, accountNumber)
+	if err != nil {
+		if errors.Is(err, domain.ErrAccountNotFound) {
+			writeError(w, http.StatusNotFound, BadRequestMessage{
+				Message: "account not found",
+			})
+			return
+		}
+
+		writeError(w, http.StatusInternalServerError, BadRequestMessage{
+			Message: "failed to retrieve account",
+		})
+		return
+	}
+
+	response := &AccountResponse{
+		AccountNumber: account.AccountNumber,
+		SortCode:      account.SortCode,
+		Name:          account.Name,
+		AccountType:   string(account.AccountType),
+		Balance:       Money(account.Balance),
+		Currency:      string(account.Currency),
+		CreatedAt:     account.CreatedAt.Format(TimeLayout),
+		UpdatedAt:     account.UpdatedAt.Format(TimeLayout),
+	}
+
+	writeJSON(w, http.StatusOK, response)
 }

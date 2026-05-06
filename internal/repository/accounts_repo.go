@@ -41,3 +41,25 @@ func (r *AccountsRepository) Create(account *domain.Account) error {
 
 	return nil
 }
+
+func (r *AccountsRepository) GetByAccountNumber(userId, accountNumber string) (*domain.Account, error) {
+	row := r.db.QueryRow(
+		`SELECT account_number, sort_code, user_id, name, account_type, balance, currency, minor_unit, created_at, updated_at
+		FROM accounts WHERE account_number = ? AND user_id = ?`, accountNumber, userId,
+	)
+
+	var account domain.Account
+	err := row.Scan(
+		&account.AccountNumber, &account.SortCode, &account.UserID, &account.Name,
+		&account.AccountType, &account.Balance, &account.Currency, &account.MinorUnit,
+		&account.CreatedAt, &account.UpdatedAt,
+	)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, domain.ErrAccountNotFound
+		}
+		return nil, fmt.Errorf("accounts.GetByAccountNumber scan: %w", err)
+	}
+
+	return &account, nil
+}
