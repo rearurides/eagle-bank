@@ -18,8 +18,18 @@ func NewValidator() *Validator {
 }
 
 // Required checks if the provided value is not empty. If it is empty, it adds a validation error for the specified field.
-func (v *Validator) Required(field, value, message string) *Validator {
-	if value == "" {
+func (v *Validator) Required(field string, value any, message string) *Validator {
+	isEmpty := false
+	switch val := value.(type) {
+	case string:
+		isEmpty = val == ""
+	case int64:
+		isEmpty = val == 0
+	default:
+		isEmpty = val == nil
+	}
+
+	if isEmpty {
 		v.items = append(v.items, ValidationItem{
 			Field:   field,
 			Message: message,

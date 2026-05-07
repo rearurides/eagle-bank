@@ -22,6 +22,7 @@ const (
 )
 
 type Account struct {
+	ID            int64
 	AccountNumber string
 	SortCode      string
 	UserID        string
@@ -35,7 +36,7 @@ type Account struct {
 }
 
 func NewAccount(
-	userID,
+	userId,
 	name string,
 	accountType string,
 	currency Currency,
@@ -48,15 +49,17 @@ func NewAccount(
 		return nil, v.ToError("invalid account")
 	}
 
+	now := time.Now().UTC()
+
 	return &Account{
-		UserID:      userID,
+		UserID:      userId,
 		Name:        name,
 		AccountType: AccountType(accountType),
 		Currency:    currency,
 		Balance:     0,
 		MinorUnit:   getMinorUnit(currency),
-		CreatedAt:   time.Now().UTC(),
-		UpdatedAt:   time.Now().UTC(),
+		CreatedAt:   now,
+		UpdatedAt:   now,
 	}, nil
 }
 
