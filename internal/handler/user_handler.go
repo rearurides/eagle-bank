@@ -3,94 +3,45 @@ package handler
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 
+	"github.com/go-playground/validator/v10"
 	"github.com/rearurides/eagle-bank/internal/domain"
-	"github.com/rearurides/eagle-bank/internal/domain/validation"
 	"github.com/rearurides/eagle-bank/internal/handler/middleware"
 	"github.com/rearurides/eagle-bank/internal/service"
-	"github.com/rearurides/eagle-bank/pkg/token"
 )
 
 type userHandler struct {
-	service      userService
-	tokenManager *token.Manager
+	svc      userService
+	validate *validator.Validate
 }
 
-func newUserHandler(svc *service.UserService, tokenManager *token.Manager) *userHandler {
-	return &userHandler{service: svc, tokenManager: tokenManager}
+func NewUserHandler(
+	svc *service.UserService,
+	v *validator.Validate,
+) *userHandler {
+	return &userHandler{svc: svc, validate: v}
 }
 
-type loginResponse struct {
-	Token string        `json:"token"`
-	User  *UserResponse `json:"user"`
-}
-
-type LoginRequest struct {
-	Email    string `json:"email"`
-	Password string `json:"password"`
-}
-
-func (h *userHandler) handleLogin(w http.ResponseWriter, r *http.Request) {
-	var body LoginRequest
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		writeError(w, http.StatusBadRequest, BadRequestMessage{
-			Message: "invalid request body",
-		})
-		return
-	}
-
-	user, err := h.service.Login(service.LoginInput{Email: body.Email})
-	if err != nil {
-		if errors.Is(err, domain.ErrInvalidCredentials) {
-			writeError(w, http.StatusUnauthorized, BadRequestMessage{
-				Message: domain.ErrInvalidCredentials.Error(),
-			})
-			return
-		}
-
-		writeError(w, http.StatusInternalServerError, BadRequestMessage{
-			Message: "internal server error",
-		})
-		return
-	}
-
-	tokenString, err := h.tokenManager.Generate(user.ID)
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, BadRequestMessage{
-			Message: "internal server error",
-		})
-		return
-	}
-
-	response := loginResponse{
-		Token: tokenString,
-		User: &UserResponse{
-			ID:   user.ID,
-			Name: user.Name,
-			Address: Addr{ //
-				Line1:    user.Addr.Line1,
-				Line2:    user.Addr.Line2,
-				Line3:    user.Addr.Line3,
-				Town:     user.Addr.Town,
-				County:   user.Addr.County,
-				PostCode: user.Addr.PostCode,
-			},
-			PhoneNumber: user.PhoneNumber,
-			Email:       user.Email,
-			CreatedAt:   user.CreatedAt.Format(TimeLayout),
-			UpdatedAt:   user.UpdatedAt.Format(TimeLayout),
-		},
-	}
-
-	writeJSON(w, http.StatusOK, response)
-}
-
-func (h *userHandler) handleCreateUser(w http.ResponseWriter, r *http.Request) {
+func (h *userHandler) HandleCreateUser(w http.ResponseWriter, r *http.Request) {
 	var body CreateUserRequest
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		writeError(w, http.StatusBadRequest, BadRequestMessage{
-			Message: "invalid request body",
+		writeError(w, http.StatusBadRequest, badRequestErrorResponse{
+			Message: ErrInvalidRequestBody.Error(),
+		})
+		return
+	}
+
+	if errs := h.validate.Struct(body); errs != nil {
+		valErrs, ok := errors.AsType[validator.ValidationErrors](errs)
+		if !ok {
+			panic(fmt.Sprintf("unexpected validation error type: %T", errs))
+		}
+
+		writeError(w, http.StatusBadRequest, badRequestErrorResponse{
+			Message: "invalid user",
+			Details: formatValidationErrs(valErrs),
 		})
 		return
 	}
@@ -108,27 +59,10 @@ func (h *userHandler) handleCreateUser(w http.ResponseWriter, r *http.Request) {
 			PostCode: body.Address.PostCode,
 		},
 	}
-	user, err := h.service.CreateUser(input)
+	user, err := h.svc.CreateUser(input)
 	if err != nil {
-		if valErr, ok := errors.AsType[*validation.ValidationError](err); ok {
-			writeError(w, http.StatusBadRequest, BadRequestMessage{
-				Message: valErr.Message,
-				Details: valErr.Items,
-			})
-			return
-		}
-
-		// This could be handled better as this could be a security concern as it leaks information about existing emails in the system.
-		// This is just for demonstration purposes. Could be mitigated by request timing and sending email validation.
-		if errors.Is(err, domain.ErrEmailAlreadyExists) {
-			writeError(w, http.StatusBadRequest, BadRequestMessage{
-				Message: "invalid request body",
-			})
-			return
-		}
-
-		writeError(w, http.StatusInternalServerError, BadRequestMessage{
-			Message: "internal server error",
+		writeError(w, http.StatusInternalServerError, badRequestErrorResponse{
+			Message: ErrInternalSever.Error(),
 		})
 
 		return
@@ -137,7 +71,7 @@ func (h *userHandler) handleCreateUser(w http.ResponseWriter, r *http.Request) {
 	response := UserResponse{
 		ID:   user.ID,
 		Name: user.Name,
-		Address: Addr{ //
+		Addr: Addr{ //
 			Line1:    user.Addr.Line1,
 			Line2:    user.Addr.Line2,
 			Line3:    user.Addr.Line3,
@@ -155,41 +89,41 @@ func (h *userHandler) handleCreateUser(w http.ResponseWriter, r *http.Request) {
 
 }
 
-func (h *userHandler) handleGetUserByID(w http.ResponseWriter, r *http.Request) {
+func (h *userHandler) HandleGetUserByID(w http.ResponseWriter, r *http.Request) {
 	userId := r.PathValue("userId")
 	if userId == "" {
-		writeError(w, http.StatusBadRequest, BadRequestMessage{
+		writeError(w, http.StatusBadRequest, badRequestErrorResponse{
 			Message: "user ID is required",
 		})
 		return
 	}
 
 	tokenUserID, ok := middleware.GetUserID(r)
-	if !ok {
-		writeError(w, http.StatusUnauthorized, BadRequestMessage{
-			Message: "unauthorized",
+	if !ok || tokenUserID == "" {
+		writeError(w, http.StatusUnauthorized, badRequestErrorResponse{
+			Message: ErrUnauthorized.Error(),
 		})
 		return
 	}
 
 	if tokenUserID != userId {
-		writeError(w, http.StatusForbidden, BadRequestMessage{
-			Message: "forbidden",
+		writeError(w, http.StatusForbidden, badRequestErrorResponse{
+			Message: ErrForbidden.Error(),
 		})
 		return
 	}
 
-	user, err := h.service.GetUserByID(userId)
+	user, err := h.svc.GetUserByID(userId)
 	if err != nil {
 		if errors.Is(err, domain.ErrUserNotFound) {
-			writeError(w, http.StatusNotFound, BadRequestMessage{
+			writeError(w, http.StatusNotFound, badRequestErrorResponse{
 				Message: "user not found",
 			})
 			return
 		}
 
-		writeError(w, http.StatusInternalServerError, BadRequestMessage{
-			Message: "internal server error",
+		writeError(w, http.StatusInternalServerError, badRequestErrorResponse{
+			Message: ErrInternalSever.Error(),
 		})
 		return
 	}
@@ -197,7 +131,7 @@ func (h *userHandler) handleGetUserByID(w http.ResponseWriter, r *http.Request) 
 	response := UserResponse{
 		ID:   user.ID,
 		Name: user.Name,
-		Address: Addr{ //
+		Addr: Addr{
 			Line1:    user.Addr.Line1,
 			Line2:    user.Addr.Line2,
 			Line3:    user.Addr.Line3,

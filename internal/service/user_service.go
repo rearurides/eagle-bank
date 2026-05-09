@@ -39,17 +39,14 @@ type CreateUserInput struct {
 
 // CreateUser creates a new user based on the provided input. It validates the input and generates a new user ID.
 func (s *UserService) CreateUser(req CreateUserInput) (*domain.User, error) {
-	user, valErr := domain.NewUser(
+	user := domain.NewUser(
 		domain.GenerateID("usr"),
 		req.Name,
 		req.Email,
 		req.PhoneNumber,
 		req.Address,
 	)
-	if valErr != nil {
-		return nil, valErr
-	}
-
+	
 	if err := s.repo.Create(user); err != nil {
 		return nil, err
 	}

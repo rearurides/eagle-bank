@@ -1,15 +1,13 @@
 package handler
 
 import (
-	"fmt"
-
 	"github.com/rearurides/eagle-bank/internal/domain"
 	"github.com/rearurides/eagle-bank/internal/service"
 )
 
 type CreateAccountRequest struct {
 	Name        string `json:"name" validate:"required"`
-	AccountType string `json:"accountType"`
+	AccountType string `json:"accountType" validate:"required,oneof=personal savings"`
 }
 
 type AccountResponse struct {
@@ -28,11 +26,15 @@ type accountsService interface {
 	GetAccountByNumber(userId, accountNumber string) (*domain.Account, error)
 }
 
-type Money float32
+type mockAccountsService struct {
+	createAccount      func(input service.CreateAccountInput) (*domain.Account, error)
+	getAccountByNumber func(userId, accountNumber string) (*domain.Account, error)
+}
 
-func (m Money) MarshalJSON() ([]byte, error) {
-	buf := make([]byte, 0, 8)
-	buf = fmt.Appendf(buf, "%.2f", m)
+func (m *mockAccountsService) CreateAccount(input service.CreateAccountInput) (*domain.Account, error) {
+	return m.createAccount(input)
+}
 
-	return buf, nil
+func (m *mockAccountsService) GetAccountByNumber(userId, accountNumber string) (*domain.Account, error) {
+	return m.getAccountByNumber(userId, accountNumber)
 }

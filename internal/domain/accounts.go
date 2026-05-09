@@ -2,8 +2,6 @@ package domain
 
 import (
 	"time"
-
-	"github.com/rearurides/eagle-bank/internal/domain/validation"
 )
 
 type AccountType string
@@ -40,15 +38,7 @@ func NewAccount(
 	name string,
 	accountType string,
 	currency Currency,
-) (*Account, *validation.ValidationError) {
-	v := validation.NewValidator().
-		Required("name", name, "name is required").
-		ValidEnum("accountType", accountType, []string{string(AccountTypePersonal), string(AccountTypeSavings)}, "invalid account type")
-
-	if v.HasErrors() {
-		return nil, v.ToError("invalid account")
-	}
-
+) *Account {
 	now := time.Now().UTC()
 
 	return &Account{
@@ -60,7 +50,7 @@ func NewAccount(
 		MinorUnit:   getMinorUnit(currency),
 		CreatedAt:   now,
 		UpdatedAt:   now,
-	}, nil
+	}
 }
 
 // getMinorUnit returns the minor unit multiplier for a given currency.

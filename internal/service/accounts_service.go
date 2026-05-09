@@ -24,12 +24,12 @@ func (s *AccountsService) CreateAccount(input CreateAccountInput) (*domain.Accou
 	// TODO: change to enum
 	sorteCode := "10-10-10"
 
-	account, valErr := domain.NewAccount(
-		input.UserID, input.Name, input.AccountType, domain.GBP,
+	account := domain.NewAccount(
+		input.UserID,
+		input.Name,
+		input.AccountType,
+		domain.GBP,
 	)
-	if valErr != nil {
-		return nil, valErr
-	}
 
 	account.SortCode = sorteCode
 

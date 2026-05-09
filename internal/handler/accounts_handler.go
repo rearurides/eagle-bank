@@ -3,59 +3,67 @@ package handler
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 
+	"github.com/go-playground/validator/v10"
 	"github.com/rearurides/eagle-bank/internal/domain"
-	"github.com/rearurides/eagle-bank/internal/domain/validation"
 	"github.com/rearurides/eagle-bank/internal/handler/middleware"
 	"github.com/rearurides/eagle-bank/internal/service"
-	"github.com/rearurides/eagle-bank/pkg/token"
 )
 
 type accountsHandler struct {
-	service accountsService
-	tm      *token.Manager
+	svc      accountsService
+	validate *validator.Validate
 }
 
-func newAccountsHandler(svc *service.AccountsService, tokenManager *token.Manager) *accountsHandler {
-	return &accountsHandler{service: svc, tm: tokenManager}
+func NewAccountsHandler(
+	svc *service.AccountsService,
+	v *validator.Validate,
+) *accountsHandler {
+	return &accountsHandler{svc: svc, validate: v}
 }
 
-func (h *accountsHandler) handleCreateAccount(w http.ResponseWriter, r *http.Request) {
+func (h *accountsHandler) HandleCreateAccount(w http.ResponseWriter, r *http.Request) {
 	var body CreateAccountRequest
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		writeError(w, http.StatusBadRequest, BadRequestMessage{
-			Message: "invalid request body",
+		writeError(w, http.StatusBadRequest, badRequestErrorResponse{
+			Message: ErrInvalidRequestBody.Error(),
 		})
 		return
 	}
 
-	userId, ok := middleware.GetUserID(r)
-	if !ok || userId == "" {
-		writeError(w, http.StatusUnauthorized, BadRequestMessage{
-			Message: "unauthorized",
+	tokenUserID, ok := middleware.GetUserID(r)
+	if !ok || tokenUserID == "" {
+		writeError(w, http.StatusUnauthorized, badRequestErrorResponse{
+			Message: ErrUnauthorized.Error(),
+		})
+		return
+	}
+
+	if errs := h.validate.Struct(body); errs != nil {
+		valErrs, ok := errors.AsType[validator.ValidationErrors](errs)
+		if !ok {
+			panic(fmt.Sprintf("unexpected validation error type: %T", errs))
+		}
+
+		writeError(w, http.StatusBadRequest, badRequestErrorResponse{
+			Message: "invalid account",
+			Details: formatValidationErrs(valErrs),
 		})
 		return
 	}
 
 	input := service.CreateAccountInput{
-		UserID:      userId,
+		UserID:      tokenUserID,
 		Name:        body.Name,
 		AccountType: body.AccountType,
 	}
 
-	account, err := h.service.CreateAccount(input)
+	account, err := h.svc.CreateAccount(input)
 	if err != nil {
-		if valErr, ok := errors.AsType[*validation.ValidationError](err); ok {
-			writeError(w, http.StatusBadRequest, BadRequestMessage{
-				Message: valErr.Message,
-				Details: valErr.Items,
-			})
-			return
-		}
-
-		writeError(w, http.StatusInternalServerError, BadRequestMessage{
-			Message: "failed to create account",
+		writeError(w, http.StatusInternalServerError, badRequestErrorResponse{
+			Message: ErrInternalSever.Error(),
 		})
 		return
 	}
@@ -74,34 +82,35 @@ func (h *accountsHandler) handleCreateAccount(w http.ResponseWriter, r *http.Req
 	writeJSON(w, http.StatusCreated, response)
 }
 
-func (h *accountsHandler) handleGetAccountByNumber(w http.ResponseWriter, r *http.Request) {
+func (h *accountsHandler) HandleGetAccountByNumber(w http.ResponseWriter, r *http.Request) {
 	accountNumber := r.PathValue("accountNumber")
 	if accountNumber == "" {
-		writeError(w, http.StatusBadRequest, BadRequestMessage{
+		writeError(w, http.StatusBadRequest, badRequestErrorResponse{
 			Message: "account number is required",
 		})
 		return
 	}
 
-	userId, ok := middleware.GetUserID(r)
-	if !ok || userId == "" {
-		writeError(w, http.StatusUnauthorized, BadRequestMessage{
-			Message: "unauthorized",
+	tokenUserID, ok := middleware.GetUserID(r)
+	if !ok || tokenUserID == "" {
+		writeError(w, http.StatusUnauthorized, badRequestErrorResponse{
+			Message: ErrUnauthorized.Error(),
 		})
 		return
 	}
 
-	account, err := h.service.GetAccountByNumber(userId, accountNumber)
+	account, err := h.svc.GetAccountByNumber(tokenUserID, accountNumber)
 	if err != nil {
-		if errors.Is(err, domain.ErrAccountNotFound) {
-			writeError(w, http.StatusNotFound, BadRequestMessage{
-				Message: "account not found",
+		ok := errors.Is(err, domain.ErrAccountNotFound)
+		if !ok {
+			writeError(w, http.StatusInternalServerError, badRequestErrorResponse{
+				Message: ErrInternalSever.Error(),
 			})
 			return
 		}
 
-		writeError(w, http.StatusInternalServerError, BadRequestMessage{
-			Message: "failed to retrieve account",
+		writeError(w, http.StatusNotFound, badRequestErrorResponse{
+			Message: err.Error(),
 		})
 		return
 	}

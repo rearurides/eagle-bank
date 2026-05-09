@@ -10,27 +10,23 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/go-playground/validator/v10"
+	"github.com/google/go-cmp/cmp"
 	"github.com/rearurides/eagle-bank/internal/domain"
-	"github.com/rearurides/eagle-bank/internal/domain/validation"
 	"github.com/rearurides/eagle-bank/internal/handler/middleware"
 	"github.com/rearurides/eagle-bank/internal/service"
 )
 
-type mockAccountsService struct {
-	createAccount      func(input service.CreateAccountInput) (*domain.Account, error)
-	getAccountByNumber func(userId, accountNumber string) (*domain.Account, error)
-}
-
-func (m *mockAccountsService) CreateAccount(input service.CreateAccountInput) (*domain.Account, error) {
-	return m.createAccount(input)
-}
-
-func (m *mockAccountsService) GetAccountByNumber(userId, accountNumber string) (*domain.Account, error) {
-	return m.getAccountByNumber(userId, accountNumber)
-}
-
 func newTestAccountsHandler(svc accountsService) *accountsHandler {
-	return &accountsHandler{service: svc}
+	validate := validator.New()
+	validate.RegisterTagNameFunc(func(field reflect.StructField) string {
+		name := strings.SplitN(field.Tag.Get("json"), ",", 2)[0]
+		if name == "-" {
+			return ""
+		}
+		return name
+	})
+	return &accountsHandler{svc: svc, validate: validate}
 }
 
 func TestAccountsHandler_handleCreateAccount(t *testing.T) {
@@ -41,11 +37,11 @@ func TestAccountsHandler_handleCreateAccount(t *testing.T) {
 		createFunc func(input service.CreateAccountInput) (*domain.Account, error)
 		wantStatus int
 		wantBody   *AccountResponse
-		wantErr    *BadRequestMessage
+		wantErr    *badRequestErrorResponse
 	}{
 		{
-			userID: "usr-abc123",
 			name:   "successful account creation",
+			userID: "usr-abc123",
 			input: `{
 				"name": "My Savings Account",
 				"accountType": "savings"
@@ -73,49 +69,58 @@ func TestAccountsHandler_handleCreateAccount(t *testing.T) {
 			},
 		},
 		{
-			userID: "usr-abc123",
-			name:   "validation error",
-			input: `{
-				"name": "",
-				"accountType": "savings"
-			}`,
-			createFunc: func(input service.CreateAccountInput) (*domain.Account, error) {
-				return nil, &validation.ValidationError{
-					Message: "invalid account",
-					Items: []validation.ValidationItem{
-						{Field: "name", Message: "name is required"},
-					},
-				}
-			},
+			name:       "validation error",
+			userID:     "usr-abc123",
+			input:      `{}`,
 			wantStatus: http.StatusBadRequest,
-			wantErr: &BadRequestMessage{
+			wantErr: &badRequestErrorResponse{
 				Message: "invalid account",
-				Details: []validation.ValidationItem{
-					{Field: "name", Message: "name is required"},
+				Details: []validationItem{
+					{Field: "name", Message: "must not be blank", Type: "required"},
+					{Field: "accountType", Message: "must not be blank", Type: "required"},
 				},
 			},
 		},
 		{
+			name:   "validation error",
 			userID: "usr-abc123",
-			name:   "invalid JSON",
-			input:  "{invalid json}",
-			createFunc: func(input service.CreateAccountInput) (*domain.Account, error) {
-				return nil, &validation.ValidationError{
-					Message: "invalid account",
-					Items: []validation.ValidationItem{
-						{Field: "name", Message: "name is required"},
-					},
-				}
-			},
+			input: `{
+				"name": "test",
+				"accountType": "host"
+			}`,
 			wantStatus: http.StatusBadRequest,
-			wantErr: &BadRequestMessage{
-				Message: "invalid request body",
+			wantErr: &badRequestErrorResponse{
+				Message: "invalid account",
+				Details: []validationItem{
+					{Field: "accountType", Message: "must be one of: personal, savings", Type: "invalid_enum"},
+				},
+			},
+		},
+		{
+			name:   "unathorized error",
+			userID: "",
+			input: `{
+				"name": "test",
+				"accountType": "personal"
+			}`,
+			wantStatus: http.StatusBadRequest,
+			wantErr: &badRequestErrorResponse{
+				Message: ErrUnauthorized.Error(),
+			},
+		},
+		{
+			userID:     "usr-abc123",
+			name:       "invalid JSON",
+			input:      "{invalid json}",
+			wantStatus: http.StatusBadRequest,
+			wantErr: &badRequestErrorResponse{
+				Message: ErrInvalidRequestBody.Error(),
 				Details: nil,
 			},
 		},
 		{
-			userID: "usr-abc123",
 			name:   "service error",
+			userID: "usr-abc123",
 			input: `{
 				"name": "My Savings Account",
 				"accountType": "savings"
@@ -124,8 +129,8 @@ func TestAccountsHandler_handleCreateAccount(t *testing.T) {
 				return nil, fmt.Errorf("unexpected error")
 			},
 			wantStatus: http.StatusInternalServerError,
-			wantErr: &BadRequestMessage{
-				Message: "failed to create account",
+			wantErr: &badRequestErrorResponse{
+				Message: ErrInternalSever.Error(),
 				Details: nil,
 			},
 		},
@@ -140,14 +145,14 @@ func TestAccountsHandler_handleCreateAccount(t *testing.T) {
 
 			// Create a mux to handle path parameters
 			mux := http.NewServeMux()
-			mux.HandleFunc("GET /v1/accounts", func(w http.ResponseWriter, r *http.Request) {
+			mux.HandleFunc("POST /v1/accounts", func(w http.ResponseWriter, r *http.Request) {
 				// Add user ID to context (mimicking middleware)
 				ctx := context.WithValue(r.Context(), middleware.UserIDKey, tc.userID)
 				r = r.WithContext(ctx)
-				handler.handleCreateAccount(w, r)
+				handler.HandleCreateAccount(w, r)
 			})
 
-			req := httptest.NewRequest(http.MethodGet, "/v1/accounts", strings.NewReader(tc.input))
+			req := httptest.NewRequest(http.MethodPost, "/v1/accounts", strings.NewReader(tc.input))
 			w := httptest.NewRecorder()
 			mux.ServeHTTP(w, req)
 
@@ -160,18 +165,18 @@ func TestAccountsHandler_handleCreateAccount(t *testing.T) {
 				if err := json.NewDecoder(w.Body).Decode(&responseBody); err != nil {
 					t.Fatalf("failed to unmarshal response body: %v", err)
 				}
-				if !reflect.DeepEqual(&responseBody, tc.wantBody) {
-					t.Errorf("expected body %v, got %v", tc.wantBody, &responseBody)
+				if diff := cmp.Diff(*tc.wantBody, responseBody); diff != "" {
+					t.Errorf("mismatch (-want +got):\n%s", diff)
 				}
 			}
 
 			if tc.wantErr != nil {
-				var responseBody BadRequestMessage
+				var responseBody badRequestErrorResponse
 				if err := json.NewDecoder(w.Body).Decode(&responseBody); err != nil {
 					t.Fatalf("failed to unmarshal error body: %v", err)
 				}
-				if !reflect.DeepEqual(&responseBody, tc.wantErr) {
-					t.Errorf("expected error %v, got %v", tc.wantErr, &responseBody)
+				if diff := cmp.Diff(*tc.wantErr, responseBody); diff != "" {
+					t.Errorf("mismatch (-want +got):\n%s", diff)
 				}
 			}
 		})
@@ -186,7 +191,7 @@ func TestAccountsHandler_handleGetAccountByNumber(t *testing.T) {
 		getFunc       func(userId, accountNumber string) (*domain.Account, error)
 		wantStatus    int
 		wantBody      *AccountResponse
-		wantErr       *BadRequestMessage
+		wantErr       *badRequestErrorResponse
 	}{
 		{
 			name:          "account found",
@@ -222,7 +227,7 @@ func TestAccountsHandler_handleGetAccountByNumber(t *testing.T) {
 				return nil, domain.ErrAccountNotFound
 			},
 			wantStatus: http.StatusNotFound,
-			wantErr: &BadRequestMessage{
+			wantErr: &badRequestErrorResponse{
 				Message: "account not found",
 				Details: nil,
 			},
@@ -235,7 +240,7 @@ func TestAccountsHandler_handleGetAccountByNumber(t *testing.T) {
 				return nil, nil
 			},
 			wantStatus: http.StatusUnauthorized,
-			wantErr: &BadRequestMessage{
+			wantErr: &badRequestErrorResponse{
 				Message: "invalid user id",
 				Details: nil,
 			},
@@ -248,7 +253,7 @@ func TestAccountsHandler_handleGetAccountByNumber(t *testing.T) {
 				return nil, fmt.Errorf("unexpected error")
 			},
 			wantStatus: http.StatusInternalServerError,
-			wantErr: &BadRequestMessage{
+			wantErr: &badRequestErrorResponse{
 				Message: "unexpected error",
 				Details: nil,
 			},
@@ -268,7 +273,7 @@ func TestAccountsHandler_handleGetAccountByNumber(t *testing.T) {
 				// Add user ID to context (mimicking middleware)
 				ctx := context.WithValue(r.Context(), middleware.UserIDKey, tc.userID)
 				r = r.WithContext(ctx)
-				handler.handleGetAccountByNumber(w, r)
+				handler.HandleGetAccountByNumber(w, r)
 			})
 
 			req := httptest.NewRequest(http.MethodGet, "/v1/accounts/"+tc.accountNumber, nil)
