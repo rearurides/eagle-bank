@@ -2,10 +2,7 @@ package server
 
 import (
 	"net/http"
-	"reflect"
-	"strings"
 
-	"github.com/go-playground/validator/v10"
 	"github.com/rearurides/eagle-bank/internal/handler"
 	"github.com/rearurides/eagle-bank/internal/handler/middleware"
 	"github.com/rearurides/eagle-bank/internal/service"
@@ -19,21 +16,14 @@ func NewRouter(
 	tm *token.Manager,
 ) http.Handler {
 	// initialise validator
-	validate := validator.New()
-	validate.RegisterTagNameFunc(func(field reflect.StructField) string {
-		name := strings.SplitN(field.Tag.Get("json"), ",", 2)[0]
-		if name == "-" {
-			return ""
-		}
-		return name
-	})
+	validate := handler.NewValidator()
 
 	mux := http.NewServeMux()
 
 	userHandler := handler.NewUserHandler(userService, validate)
 	loginHandler := handler.NewLoginHandler(userService, validate, *tm)
 	accountHandler := handler.NewAccountsHandler(accountService, validate)
-	// transactionsHandler := NewTransactionsHandler(transactionsService, tm)
+	transactionsHandler := handler.NewTransactionsHandler(transactionsService, validate)
 
 	mux.HandleFunc("POST /v1/users", userHandler.HandleCreateUser)
 	mux.HandleFunc("POST /v1/auth/login", loginHandler.HandleLogin)
@@ -41,18 +31,18 @@ func NewRouter(
 	protected := http.NewServeMux()
 	// add protected routes
 	// User routes
-	//protected.HandleFunc("GET /v1/users/{userId}", userHandler.handleGetUserByID)
+	protected.HandleFunc("GET /v1/users/{userId}", userHandler.HandleGetUserByID)
 	// Account routes
 	protected.HandleFunc("POST /v1/accounts", accountHandler.HandleCreateAccount)
-	//protected.HandleFunc("GET /v1/accounts/{accountNumber}", accountHandler.handleGetAccountByNumber)
+	protected.HandleFunc("GET /v1/accounts/{accountNumber}", accountHandler.HandleGetAccountByNumber)
 
 	// Transactions Routes
-	//protected.HandleFunc("POST /v1/accounts/{accountNumber}/transactions", transactionsHandler.handleCreateTransactions)
+	protected.HandleFunc("POST /v1/accounts/{accountNumber}/transactions", transactionsHandler.HandleCreateTransactions)
 
-	//mux.Handle("/v1/users/{userId}", middleware.Auth(tm)(protected))
-	//mux.Handle("/v1/accounts", middleware.Auth(tm)(protected))
-	//mux.Handle("/v1/accounts/{accountNumber}", middleware.Auth(tm)(protected))
-	//mux.Handle("/v1/accounts/{accountNumber}/transactions", middleware.Auth(tm)(protected))
+	mux.Handle("/v1/users/{userId}", middleware.Auth(tm)(protected))
+	mux.Handle("/v1/accounts", middleware.Auth(tm)(protected))
+	mux.Handle("/v1/accounts/{accountNumber}", middleware.Auth(tm)(protected))
+	mux.Handle("/v1/accounts/{accountNumber}/transactions", middleware.Auth(tm)(protected))
 
 	return middleware.Chain(mux,
 		middleware.Logging,

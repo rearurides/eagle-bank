@@ -1,8 +1,6 @@
 package handler
 
 import (
-	"context"
-	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -11,9 +9,7 @@ import (
 	"testing"
 
 	"github.com/go-playground/validator/v10"
-	"github.com/google/go-cmp/cmp"
 	"github.com/rearurides/eagle-bank/internal/domain"
-	"github.com/rearurides/eagle-bank/internal/handler/middleware"
 	"github.com/rearurides/eagle-bank/internal/service"
 )
 
@@ -31,17 +27,17 @@ func newTestAccountsHandler(svc accountsService) *accountsHandler {
 
 func TestAccountsHandler_handleCreateAccount(t *testing.T) {
 	testCases := []struct {
-		userID     string
-		name       string
-		input      string
-		createFunc func(input service.CreateAccountInput) (*domain.Account, error)
-		wantStatus int
-		wantBody   *AccountResponse
-		wantErr    *badRequestErrorResponse
+		tokenUserID string
+		name        string
+		input       string
+		createFunc  func(input service.CreateAccountInput) (*domain.Account, error)
+		wantStatus  int
+		wantBody    *AccountResponse
+		wantErr     *errorResponse
 	}{
 		{
-			name:   "successful account creation",
-			userID: "usr-abc123",
+			name:        "successful account creation",
+			tokenUserID: "usr-abc123",
 			input: `{
 				"name": "My Savings Account",
 				"accountType": "savings"
@@ -69,11 +65,11 @@ func TestAccountsHandler_handleCreateAccount(t *testing.T) {
 			},
 		},
 		{
-			name:       "validation error",
-			userID:     "usr-abc123",
-			input:      `{}`,
-			wantStatus: http.StatusBadRequest,
-			wantErr: &badRequestErrorResponse{
+			name:        "validation error",
+			tokenUserID: "usr-abc123",
+			input:       `{}`,
+			wantStatus:  http.StatusBadRequest,
+			wantErr: &errorResponse{
 				Message: "invalid account",
 				Details: []validationItem{
 					{Field: "name", Message: "must not be blank", Type: "required"},
@@ -82,14 +78,14 @@ func TestAccountsHandler_handleCreateAccount(t *testing.T) {
 			},
 		},
 		{
-			name:   "validation error",
-			userID: "usr-abc123",
+			name:        "validation error",
+			tokenUserID: "usr-abc123",
 			input: `{
 				"name": "test",
 				"accountType": "host"
 			}`,
 			wantStatus: http.StatusBadRequest,
-			wantErr: &badRequestErrorResponse{
+			wantErr: &errorResponse{
 				Message: "invalid account",
 				Details: []validationItem{
 					{Field: "accountType", Message: "must be one of: personal, savings", Type: "invalid_enum"},
@@ -97,30 +93,30 @@ func TestAccountsHandler_handleCreateAccount(t *testing.T) {
 			},
 		},
 		{
-			name:   "unathorized error",
-			userID: "",
+			name:        "unathorized error",
+			tokenUserID: "",
 			input: `{
 				"name": "test",
 				"accountType": "personal"
 			}`,
-			wantStatus: http.StatusBadRequest,
-			wantErr: &badRequestErrorResponse{
+			wantStatus: http.StatusUnauthorized,
+			wantErr: &errorResponse{
 				Message: ErrUnauthorized.Error(),
 			},
 		},
 		{
-			userID:     "usr-abc123",
-			name:       "invalid JSON",
-			input:      "{invalid json}",
-			wantStatus: http.StatusBadRequest,
-			wantErr: &badRequestErrorResponse{
+			name:        "invalid JSON",
+			tokenUserID: "usr-abc123",
+			input:       "{invalid json}",
+			wantStatus:  http.StatusBadRequest,
+			wantErr: &errorResponse{
 				Message: ErrInvalidRequestBody.Error(),
 				Details: nil,
 			},
 		},
 		{
-			name:   "service error",
-			userID: "usr-abc123",
+			name:        "service error",
+			tokenUserID: "usr-abc123",
 			input: `{
 				"name": "My Savings Account",
 				"accountType": "savings"
@@ -129,7 +125,7 @@ func TestAccountsHandler_handleCreateAccount(t *testing.T) {
 				return nil, fmt.Errorf("unexpected error")
 			},
 			wantStatus: http.StatusInternalServerError,
-			wantErr: &badRequestErrorResponse{
+			wantErr: &errorResponse{
 				Message: ErrInternalSever.Error(),
 				Details: nil,
 			},
@@ -146,39 +142,15 @@ func TestAccountsHandler_handleCreateAccount(t *testing.T) {
 			// Create a mux to handle path parameters
 			mux := http.NewServeMux()
 			mux.HandleFunc("POST /v1/accounts", func(w http.ResponseWriter, r *http.Request) {
-				// Add user ID to context (mimicking middleware)
-				ctx := context.WithValue(r.Context(), middleware.UserIDKey, tc.userID)
-				r = r.WithContext(ctx)
 				handler.HandleCreateAccount(w, r)
 			})
 
-			req := httptest.NewRequest(http.MethodPost, "/v1/accounts", strings.NewReader(tc.input))
+			req := newAuthRequest(t, http.MethodPost, "/v1/accounts", tc.input, tc.tokenUserID)
 			w := httptest.NewRecorder()
 			mux.ServeHTTP(w, req)
 
-			if w.Code != tc.wantStatus {
-				t.Errorf("expected status %d, got %d", tc.wantStatus, w.Code)
-			}
+			assertResponse(t, w, tc.wantStatus, tc.wantBody, tc.wantErr)
 
-			if tc.wantBody != nil {
-				var responseBody AccountResponse
-				if err := json.NewDecoder(w.Body).Decode(&responseBody); err != nil {
-					t.Fatalf("failed to unmarshal response body: %v", err)
-				}
-				if diff := cmp.Diff(*tc.wantBody, responseBody); diff != "" {
-					t.Errorf("mismatch (-want +got):\n%s", diff)
-				}
-			}
-
-			if tc.wantErr != nil {
-				var responseBody badRequestErrorResponse
-				if err := json.NewDecoder(w.Body).Decode(&responseBody); err != nil {
-					t.Fatalf("failed to unmarshal error body: %v", err)
-				}
-				if diff := cmp.Diff(*tc.wantErr, responseBody); diff != "" {
-					t.Errorf("mismatch (-want +got):\n%s", diff)
-				}
-			}
 		})
 	}
 }
@@ -187,15 +159,17 @@ func TestAccountsHandler_handleGetAccountByNumber(t *testing.T) {
 	testCases := []struct {
 		name          string
 		userID        string
+		tokenUserID   string
 		accountNumber string
 		getFunc       func(userId, accountNumber string) (*domain.Account, error)
 		wantStatus    int
 		wantBody      *AccountResponse
-		wantErr       *badRequestErrorResponse
+		wantErr       *errorResponse
 	}{
 		{
 			name:          "account found",
 			userID:        "usr-abc123",
+			tokenUserID:   "usr-abc123",
 			accountNumber: "12345678",
 			getFunc: func(userId, accountNumber string) (*domain.Account, error) {
 				return &domain.Account{
@@ -222,38 +196,40 @@ func TestAccountsHandler_handleGetAccountByNumber(t *testing.T) {
 		{
 			name:          "account not found",
 			userID:        "usr-abc123",
+			tokenUserID:   "usr-abc123",
 			accountNumber: "99999999",
 			getFunc: func(userId, accountNumber string) (*domain.Account, error) {
 				return nil, domain.ErrAccountNotFound
 			},
 			wantStatus: http.StatusNotFound,
-			wantErr: &badRequestErrorResponse{
+			wantErr: &errorResponse{
 				Message: "account not found",
 				Details: nil,
 			},
 		},
 		{
-			name:          "invalid user id",
+			name:          "unauthorized - no token",
 			userID:        "",
 			accountNumber: "12345678",
 			getFunc: func(userId, accountNumber string) (*domain.Account, error) {
 				return nil, nil
 			},
 			wantStatus: http.StatusUnauthorized,
-			wantErr: &badRequestErrorResponse{
-				Message: "invalid user id",
+			wantErr: &errorResponse{
+				Message: "unauthorized",
 				Details: nil,
 			},
 		},
 		{
 			name:          "service error",
 			userID:        "usr-abc123",
+			tokenUserID:   "usr-abc123",
 			accountNumber: "12345678",
 			getFunc: func(userId, accountNumber string) (*domain.Account, error) {
 				return nil, fmt.Errorf("unexpected error")
 			},
 			wantStatus: http.StatusInternalServerError,
-			wantErr: &badRequestErrorResponse{
+			wantErr: &errorResponse{
 				Message: "unexpected error",
 				Details: nil,
 			},
@@ -267,31 +243,16 @@ func TestAccountsHandler_handleGetAccountByNumber(t *testing.T) {
 			}
 			handler := newTestAccountsHandler(mockSvc)
 
-			// Create a mux to handle path parameters
 			mux := http.NewServeMux()
 			mux.HandleFunc("GET /v1/accounts/{accountNumber}", func(w http.ResponseWriter, r *http.Request) {
-				// Add user ID to context (mimicking middleware)
-				ctx := context.WithValue(r.Context(), middleware.UserIDKey, tc.userID)
-				r = r.WithContext(ctx)
 				handler.HandleGetAccountByNumber(w, r)
 			})
 
-			req := httptest.NewRequest(http.MethodGet, "/v1/accounts/"+tc.accountNumber, nil)
+			req := newAuthRequest(t, http.MethodGet, "/v1/accounts/"+tc.accountNumber, "", tc.tokenUserID)
 			w := httptest.NewRecorder()
 			mux.ServeHTTP(w, req)
 
-			if w.Code != tc.wantStatus {
-				t.Errorf("expected status %d, got %d", tc.wantStatus, w.Code)
-			}
-			if tc.wantBody != nil {
-				var responseBody AccountResponse
-				if err := json.NewDecoder(w.Body).Decode(&responseBody); err != nil {
-					t.Fatalf("failed to unmarshal response body: %v", err)
-				}
-				if !reflect.DeepEqual(&responseBody, tc.wantBody) {
-					t.Errorf("expected body %v, got %v", tc.wantBody, &responseBody)
-				}
-			}
+			assertResponse(t, w, tc.wantStatus, tc.wantBody, tc.wantErr)
 		})
 	}
 }

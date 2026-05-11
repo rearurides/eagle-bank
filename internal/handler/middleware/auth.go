@@ -43,5 +43,8 @@ func Auth(tm *token.Manager) func(http.Handler) http.Handler {
 // GetUserID retrieves the userId from the request context
 func GetUserID(r *http.Request) (string, bool) {
 	id, ok := r.Context().Value(UserIDKey).(string)
-	return id, ok
+	if !ok || id == "" {
+		return "", false
+	}
+	return id, true
 }

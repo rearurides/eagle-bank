@@ -6,9 +6,9 @@ import (
 )
 
 type CreateTransactionRequest struct {
-	Amount          float64 `json:"amount"`
-	Currency        string  `json:"currency"`
-	TransactionType string  `json:"type"`
+	Amount          float64 `json:"amount" validate:"required,gt=0,decimal2"`
+	Currency        string  `json:"currency" validate:"required,oneof=GBP USD"`
+	TransactionType string  `json:"type" validate:"required,oneof=deposit withdrawal"`
 	Reference       string  `json:"reference"`
 }
 

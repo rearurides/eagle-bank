@@ -4,7 +4,6 @@ import (
 	"fmt"
 
 	"github.com/rearurides/eagle-bank/internal/domain"
-	"github.com/rearurides/eagle-bank/internal/domain/validation"
 )
 
 const (
@@ -37,17 +36,12 @@ type CreateTransactionInput struct {
 func (s *TransactionsService) CreateTransaction(tan *CreateTransactionInput) (*domain.Transaction, error) {
 	amount := int64(tan.Amount * 100) // TODO: get Minor units
 
-	transaction, valErr := domain.NewTransaction(
+	transaction := domain.NewTransaction(
 		amount,
 		tan.Currency,
 		tan.TransactionType,
 		tan.Reference,
 	)
-	if valErr != nil {
-		return nil, valErr
-	}
-
-	val := validation.NewValidator()
 
 	acc, err := s.accRepo.GetByAccountNumber(tan.UserID, tan.AccountNumber)
 	if err != nil {
@@ -57,13 +51,11 @@ func (s *TransactionsService) CreateTransaction(tan *CreateTransactionInput) (*d
 	switch transaction.TransactionType {
 	case domain.TransactionTypeDeposit:
 		if acc.Balance+transaction.Amount > MaxBalance {
-			return nil, val.ToError(
-				fmt.Sprintf("deposit would exceed maximum balance of  %.2f", float64(MaxBalance/transaction.MinorUnit)),
-			)
+			return nil, fmt.Errorf("deposit would exceed maximum balance of  %.2f", float64(MaxBalance/transaction.MinorUnit))
 		}
 	case domain.TransactionTypeWithdrawal:
 		if acc.Balance-transaction.Amount < MinBalance {
-			return nil, val.ToError(domain.ErrInsufficientFunds.Error())
+			return nil, domain.ErrInsufficientFunds
 		}
 	}
 	transaction.AccountID = acc.ID

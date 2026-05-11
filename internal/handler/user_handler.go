@@ -27,7 +27,7 @@ func NewUserHandler(
 func (h *userHandler) HandleCreateUser(w http.ResponseWriter, r *http.Request) {
 	var body CreateUserRequest
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		writeError(w, http.StatusBadRequest, badRequestErrorResponse{
+		writeError(w, http.StatusBadRequest, errorResponse{
 			Message: ErrInvalidRequestBody.Error(),
 		})
 		return
@@ -39,7 +39,7 @@ func (h *userHandler) HandleCreateUser(w http.ResponseWriter, r *http.Request) {
 			panic(fmt.Sprintf("unexpected validation error type: %T", errs))
 		}
 
-		writeError(w, http.StatusBadRequest, badRequestErrorResponse{
+		writeError(w, http.StatusBadRequest, errorResponse{
 			Message: "invalid user",
 			Details: formatValidationErrs(valErrs),
 		})
@@ -61,7 +61,7 @@ func (h *userHandler) HandleCreateUser(w http.ResponseWriter, r *http.Request) {
 	}
 	user, err := h.svc.CreateUser(input)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, badRequestErrorResponse{
+		writeError(w, http.StatusInternalServerError, errorResponse{
 			Message: ErrInternalSever.Error(),
 		})
 
@@ -91,23 +91,17 @@ func (h *userHandler) HandleCreateUser(w http.ResponseWriter, r *http.Request) {
 
 func (h *userHandler) HandleGetUserByID(w http.ResponseWriter, r *http.Request) {
 	userId := r.PathValue("userId")
-	if userId == "" {
-		writeError(w, http.StatusBadRequest, badRequestErrorResponse{
-			Message: "user ID is required",
-		})
-		return
-	}
 
 	tokenUserID, ok := middleware.GetUserID(r)
-	if !ok || tokenUserID == "" {
-		writeError(w, http.StatusUnauthorized, badRequestErrorResponse{
+	if !ok {
+		writeError(w, http.StatusUnauthorized, errorResponse{
 			Message: ErrUnauthorized.Error(),
 		})
 		return
 	}
 
 	if tokenUserID != userId {
-		writeError(w, http.StatusForbidden, badRequestErrorResponse{
+		writeError(w, http.StatusForbidden, errorResponse{
 			Message: ErrForbidden.Error(),
 		})
 		return
@@ -116,13 +110,13 @@ func (h *userHandler) HandleGetUserByID(w http.ResponseWriter, r *http.Request) 
 	user, err := h.svc.GetUserByID(userId)
 	if err != nil {
 		if errors.Is(err, domain.ErrUserNotFound) {
-			writeError(w, http.StatusNotFound, badRequestErrorResponse{
+			writeError(w, http.StatusNotFound, errorResponse{
 				Message: "user not found",
 			})
 			return
 		}
 
-		writeError(w, http.StatusInternalServerError, badRequestErrorResponse{
+		writeError(w, http.StatusInternalServerError, errorResponse{
 			Message: ErrInternalSever.Error(),
 		})
 		return

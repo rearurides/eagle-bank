@@ -38,7 +38,7 @@ type loginRequest struct {
 func (h *loginHandler) HandleLogin(w http.ResponseWriter, r *http.Request) {
 	var body loginRequest
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		writeError(w, http.StatusBadRequest, badRequestErrorResponse{
+		writeError(w, http.StatusBadRequest, errorResponse{
 			Message: "invalid request body",
 		})
 		return
@@ -50,7 +50,7 @@ func (h *loginHandler) HandleLogin(w http.ResponseWriter, r *http.Request) {
 			panic(fmt.Sprintf("unexpected validation error type: %T", errs))
 		}
 
-		writeError(w, http.StatusBadRequest, badRequestErrorResponse{
+		writeError(w, http.StatusBadRequest, errorResponse{
 			Message: "invalid auth details",
 			Details: formatValidationErrs(valErrs),
 		})
@@ -60,13 +60,13 @@ func (h *loginHandler) HandleLogin(w http.ResponseWriter, r *http.Request) {
 	user, err := h.svc.Login(service.LoginInput{Email: body.Email})
 	if err != nil {
 		if errors.Is(err, ErrInvalidCredentials) {
-			writeError(w, http.StatusBadRequest, badRequestErrorResponse{
+			writeError(w, http.StatusBadRequest, errorResponse{
 				Message: ErrInvalidCredentials.Error(),
 			})
 			return
 		}
 
-		writeError(w, http.StatusInternalServerError, badRequestErrorResponse{
+		writeError(w, http.StatusInternalServerError, errorResponse{
 			Message: "internal server error",
 		})
 		return
@@ -74,7 +74,7 @@ func (h *loginHandler) HandleLogin(w http.ResponseWriter, r *http.Request) {
 
 	tokenString, err := h.tm.Generate(user.ID)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, badRequestErrorResponse{
+		writeError(w, http.StatusInternalServerError, errorResponse{
 			Message: "internal server error",
 		})
 		return

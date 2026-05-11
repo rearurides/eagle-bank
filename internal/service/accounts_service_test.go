@@ -4,7 +4,6 @@ import (
 	"testing"
 
 	"github.com/rearurides/eagle-bank/internal/domain"
-	"github.com/rearurides/eagle-bank/internal/domain/validation"
 )
 
 type mockAccountRepository struct {
@@ -49,23 +48,6 @@ func TestAccountsService_CreateAccount(t *testing.T) {
 				return nil
 			},
 			wantErr: false,
-		},
-		{
-			name: "validation error",
-			input: CreateAccountInput{
-				UserID:      "usr-abc123",
-				Name:        "",
-				AccountType: "savings",
-			},
-			createFunc: func(account *domain.Account) error {
-				return &validation.ValidationError{
-					Message: "invalid account",
-					Items: []validation.ValidationItem{
-						{Field: "name", Message: "name is required"},
-					},
-				}
-			},
-			wantErr: true,
 		},
 		{
 			name: "repository error",

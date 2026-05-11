@@ -27,15 +27,15 @@ func NewAccountsHandler(
 func (h *accountsHandler) HandleCreateAccount(w http.ResponseWriter, r *http.Request) {
 	var body CreateAccountRequest
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		writeError(w, http.StatusBadRequest, badRequestErrorResponse{
+		writeError(w, http.StatusBadRequest, errorResponse{
 			Message: ErrInvalidRequestBody.Error(),
 		})
 		return
 	}
 
 	tokenUserID, ok := middleware.GetUserID(r)
-	if !ok || tokenUserID == "" {
-		writeError(w, http.StatusUnauthorized, badRequestErrorResponse{
+	if !ok {
+		writeError(w, http.StatusUnauthorized, errorResponse{
 			Message: ErrUnauthorized.Error(),
 		})
 		return
@@ -47,7 +47,7 @@ func (h *accountsHandler) HandleCreateAccount(w http.ResponseWriter, r *http.Req
 			panic(fmt.Sprintf("unexpected validation error type: %T", errs))
 		}
 
-		writeError(w, http.StatusBadRequest, badRequestErrorResponse{
+		writeError(w, http.StatusBadRequest, errorResponse{
 			Message: "invalid account",
 			Details: formatValidationErrs(valErrs),
 		})
@@ -62,7 +62,7 @@ func (h *accountsHandler) HandleCreateAccount(w http.ResponseWriter, r *http.Req
 
 	account, err := h.svc.CreateAccount(input)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, badRequestErrorResponse{
+		writeError(w, http.StatusInternalServerError, errorResponse{
 			Message: ErrInternalSever.Error(),
 		})
 		return
@@ -84,16 +84,10 @@ func (h *accountsHandler) HandleCreateAccount(w http.ResponseWriter, r *http.Req
 
 func (h *accountsHandler) HandleGetAccountByNumber(w http.ResponseWriter, r *http.Request) {
 	accountNumber := r.PathValue("accountNumber")
-	if accountNumber == "" {
-		writeError(w, http.StatusBadRequest, badRequestErrorResponse{
-			Message: "account number is required",
-		})
-		return
-	}
 
 	tokenUserID, ok := middleware.GetUserID(r)
-	if !ok || tokenUserID == "" {
-		writeError(w, http.StatusUnauthorized, badRequestErrorResponse{
+	if !ok {
+		writeError(w, http.StatusUnauthorized, errorResponse{
 			Message: ErrUnauthorized.Error(),
 		})
 		return
@@ -101,15 +95,14 @@ func (h *accountsHandler) HandleGetAccountByNumber(w http.ResponseWriter, r *htt
 
 	account, err := h.svc.GetAccountByNumber(tokenUserID, accountNumber)
 	if err != nil {
-		ok := errors.Is(err, domain.ErrAccountNotFound)
-		if !ok {
-			writeError(w, http.StatusInternalServerError, badRequestErrorResponse{
-				Message: ErrInternalSever.Error(),
+		if errors.Is(err, domain.ErrAccountNotFound) {
+			writeError(w, http.StatusNotFound, errorResponse{
+				Message: "account not found",
 			})
 			return
 		}
 
-		writeError(w, http.StatusNotFound, badRequestErrorResponse{
+		writeError(w, http.StatusInternalServerError, errorResponse{
 			Message: err.Error(),
 		})
 		return
